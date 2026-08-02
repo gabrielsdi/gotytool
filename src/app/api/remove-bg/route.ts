@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type Provider = "clearbackdrop" | "removebg" | "pixian";
+type Provider = "clearbackdrop" | "removebg";
+type SizeOption = "auto" | "full" | "50MP";
 
 async function clearbackdrop(image: File) {
   const formData = new FormData();
@@ -20,21 +21,28 @@ async function clearbackdrop(image: File) {
   return {
     image: `data:image/png;base64,${Buffer.from(buf).toString("base64")}`,
     remaining: res.headers.get("X-Remaining"),
+    creditsUsed: null,
+    creditsTotal: null,
   };
 }
 
-async function removebg(image: File, apiKey: string) {
+async function removebg(image: File, size: SizeOption) {
+  const apiKey = process.env.REMOVEBG_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "remove.bg API key not configured. Set REMOVEBG_API_KEY in .env.local"
+    );
+  }
+
   const formData = new FormData();
   formData.append("image_file", image);
+  formData.append("size", size);
 
-  const res = await fetch(
-    "https://api.remove.bg/v1.0/removebg",
-    {
-      method: "POST",
-      headers: { "X-Api-Key": apiKey },
-      body: formData,
-    }
-  );
+  const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": apiKey },
+    body: formData,
+  });
 
   if (!res.ok) {
     const text = await res.text();
@@ -42,35 +50,40 @@ async function removebg(image: File, apiKey: string) {
   }
 
   const buf = await res.arrayBuffer();
+  const creditsCharged = res.headers.get("X-Credits-Charged");
+
   return {
     image: `data:image/png;base64,${Buffer.from(buf).toString("base64")}`,
     remaining: null,
+    creditsUsed: creditsCharged ? parseFloat(creditsCharged) : null,
+    creditsTotal: null,
   };
 }
 
-async function pixian(image: File, apiKey: string) {
-  const formData = new FormData();
-  formData.append("image", image);
+async function getRemoveBgAccountInfo() {
+  const apiKey = process.env.REMOVEBG_API_KEY;
+  if (!apiKey) return null;
 
-  const res = await fetch(
-    "https://api.pixian.ai/v2/remove-background",
-    {
-      method: "POST",
-      headers: { Authorization: `Basic ${apiKey}` },
-      body: formData,
-    }
-  );
+  try {
+    const res = await fetch("https://api.remove.bg/v1.0/account", {
+      headers: { "X-Api-Key": apiKey },
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Pixian.AI ${res.status}: ${text}`);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return {
+      credits: data.data?.credits?.subscription,
+      photos: data.data?.photos?.subscription,
+    };
+  } catch {
+    return null;
   }
+}
 
-  const buf = await res.arrayBuffer();
-  return {
-    image: `data:image/png;base64,${Buffer.from(buf).toString("base64")}`,
-    remaining: null,
-  };
+export async function GET() {
+  const accountInfo = await getRemoveBgAccountInfo();
+  return NextResponse.json({ removebg: accountInfo });
 }
 
 export async function POST(request: NextRequest) {
@@ -78,7 +91,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const image = formData.get("image") as File;
     const provider = (formData.get("provider") as Provider) || "clearbackdrop";
-    const apiKey = (formData.get("apiKey") as string) || "";
+    const size = (formData.get("size") as SizeOption) || "auto";
 
     if (!image) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
@@ -88,22 +101,7 @@ export async function POST(request: NextRequest) {
 
     switch (provider) {
       case "removebg":
-        if (!apiKey) {
-          return NextResponse.json(
-            { error: "remove.bg requires an API key. Get one at https://www.remove.bg/api" },
-            { status: 400 }
-          );
-        }
-        result = await removebg(image, apiKey);
-        break;
-      case "pixian":
-        if (!apiKey) {
-          return NextResponse.json(
-            { error: "Pixian.AI requires an API key. Get one at https://pixian.ai/api" },
-            { status: 400 }
-          );
-        }
-        result = await pixian(image, apiKey);
+        result = await removebg(image, size);
         break;
       case "clearbackdrop":
       default:
@@ -113,9 +111,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      { error: `${error}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `${error}` }, { status: 500 });
   }
 }
