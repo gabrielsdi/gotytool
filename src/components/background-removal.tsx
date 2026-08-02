@@ -54,6 +54,12 @@ interface AccountInfo {
   photos: number | null;
 }
 
+interface ClearBackdropQuota {
+  limit: number | null;
+  remaining: number | null;
+  reset: number | null;
+}
+
 interface BackgroundRemovalProps {
   onAssetCreated?: (asset: {
     originalName: string;
@@ -75,9 +81,11 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
   const [remaining, setRemaining] = useState<string | null>(null);
   const [creditsUsed, setCreditsUsed] = useState<number | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
+  const [clearBackdropQuota, setClearBackdropQuota] = useState<ClearBackdropQuota | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isRemovebg = provider === "removebg";
+  const isClearBackdrop = provider === "clearbackdrop";
 
   useEffect(() => {
     if (isRemovebg) {
@@ -85,10 +93,18 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
         .then((r) => r.json())
         .then((data) => {
           if (data.removebg) setAccountInfo(data.removebg);
+          if (data.clearbackdrop) setClearBackdropQuota(data.clearbackdrop);
+        })
+        .catch(() => {});
+    } else if (isClearBackdrop) {
+      fetch("/api/remove-bg")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.clearbackdrop) setClearBackdropQuota(data.clearbackdrop);
         })
         .catch(() => {});
     }
-  }, [isRemovebg]);
+  }, [isRemovebg, isClearBackdrop]);
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -201,6 +217,14 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
               setProvider(v);
               setRemaining(null);
               setCreditsUsed(null);
+              if (v === "clearbackdrop") {
+                fetch("/api/remove-bg")
+                  .then((r) => r.json())
+                  .then((data) => {
+                    if (data.clearbackdrop) setClearBackdropQuota(data.clearbackdrop);
+                  })
+                  .catch(() => {});
+              }
             }
           }}
           disabled={loading}
@@ -264,12 +288,26 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
           <div className="flex items-center gap-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2">
             <Coins className="w-4 h-4 text-amber-500" />
             <span className="text-sm text-zinc-300">
-              Credits remaining:{" "}
+              Free calls remaining:{" "}
               <span className="font-bold text-white">
                 {accountInfo.credits}
               </span>
             </span>
             <span className="text-xs text-zinc-500">/ 50 monthly</span>
+          </div>
+        )}
+        {isClearBackdrop && clearBackdropQuota && (
+          <div className="flex items-center gap-2 bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2">
+            <Zap className="w-4 h-4 text-emerald-500" />
+            <span className="text-sm text-zinc-300">
+              Images remaining this hour:{" "}
+              <span className="font-bold text-white">
+                {clearBackdropQuota.remaining}
+              </span>
+            </span>
+            <span className="text-xs text-zinc-500">
+              / {clearBackdropQuota.limit}
+            </span>
           </div>
         )}
         {remaining && (

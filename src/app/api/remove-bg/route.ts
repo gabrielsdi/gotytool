@@ -72,9 +72,25 @@ async function getRemoveBgAccountInfo() {
     if (!res.ok) return null;
 
     const data = await res.json();
+    const attrs = data.data?.attributes;
     return {
-      credits: data.data?.credits?.subscription,
-      photos: data.data?.photos?.subscription,
+      credits: attrs?.api?.free_calls ?? attrs?.credits?.subscription ?? null,
+      photos: attrs?.photos?.subscription ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getClearBackdropQuota() {
+  try {
+    const res = await fetch("https://clearbackdrop.com/api/v1/quota");
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      limit: data.limit_per_hour ?? null,
+      remaining: data.remaining ?? null,
+      reset: data.reset_seconds ?? null,
     };
   } catch {
     return null;
@@ -82,8 +98,11 @@ async function getRemoveBgAccountInfo() {
 }
 
 export async function GET() {
-  const accountInfo = await getRemoveBgAccountInfo();
-  return NextResponse.json({ removebg: accountInfo });
+  const [removebg, clearbackdrop] = await Promise.all([
+    getRemoveBgAccountInfo(),
+    getClearBackdropQuota(),
+  ]);
+  return NextResponse.json({ removebg, clearbackdrop });
 }
 
 export async function POST(request: NextRequest) {
