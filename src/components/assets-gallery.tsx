@@ -15,11 +15,18 @@ import {
   Coins,
   Cpu,
   Image as ImageIcon,
+  Loader2,
+  Check,
 } from "lucide-react";
 
 interface AssetsGalleryProps {
   assets: Asset[];
-  onDelete: (id: string) => void;
+  deleting: boolean;
+  selecting: boolean;
+  selectedIds: Set<string>;
+  onSelect: (id: string) => void;
+  onDeleteSelected: () => void;
+  onToggleSelect: () => void;
 }
 
 function formatTimestamp(ts: number) {
@@ -35,27 +42,43 @@ function formatDateTime(ts: number) {
   });
 }
 
-export function AssetsGallery({ assets, onDelete }: AssetsGalleryProps) {
+export function AssetsGallery({
+  assets,
+  deleting,
+  selecting,
+  selectedIds,
+  onSelect,
+  onDeleteSelected,
+  onToggleSelect,
+}: AssetsGalleryProps) {
   const [selected, setSelected] = useState<Asset | null>(null);
   const [open, setOpen] = useState(false);
 
   const handleSelect = (asset: Asset) => {
-    setSelected(asset);
-    setOpen(true);
+    if (selecting) {
+      onSelect(asset.id);
+    } else {
+      setSelected(asset);
+      setOpen(true);
+    }
   };
 
-  const handleDownload = (asset: Asset) => {
+  const handleDownload = async (asset: Asset) => {
     const baseName = asset.originalName.replace(/\.[^.]+$/, "");
     const sizeLabel = asset.size || "default";
     const dateStr = formatTimestamp(asset.timestamp);
     const filename = `${baseName}-${asset.provider}-${sizeLabel}-${dateStr}-no-bg.png`;
+    const response = await fetch(asset.resultImage);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = asset.resultImage;
+    link.href = url;
     link.download = filename;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
-  if (assets.length === 0) {
+  if (assets.length === 0 && !deleting) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <ImageIcon className="w-16 h-16 text-zinc-700 mb-4" />
@@ -69,68 +92,129 @@ export function AssetsGallery({ assets, onDelete }: AssetsGalleryProps) {
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        {assets.map((asset) => (
-          <div
-            key={asset.id}
-            className="group relative bg-zinc-800 rounded-xl overflow-hidden border border-zinc-700/50 hover:border-amber-500/30 transition-all cursor-pointer"
-            onClick={() => handleSelect(asset)}
-          >
-            <div
-              className="aspect-square"
-              style={{
-                background:
-                  "repeating-conic-gradient(#2a2a2a 0% 25%, #1a1a1a 0% 50%) 50% / 10px 10px",
-              }}
-            >
-              <img
-                src={asset.resultImage}
-                alt={asset.originalName}
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="absolute bottom-0 left-0 right-0 p-3">
-                <p className="text-xs text-zinc-300 font-medium truncate">
-                  {asset.originalName}
-                </p>
-                <p className="text-[10px] text-zinc-500 mt-0.5">
-                  {asset.provider} • {formatDateTime(asset.timestamp)}
-                </p>
-              </div>
-              <div className="absolute top-2 right-2 flex gap-1">
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-600"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload(asset);
-                  }}
-                >
-                  <Download className="h-3.5 w-3.5 text-zinc-300" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7 bg-zinc-800/90 hover:bg-red-900 border border-zinc-600"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(asset.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-zinc-300" />
-                </Button>
-              </div>
-            </div>
+      {/* Deleting overlay */}
+      {deleting && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3 bg-zinc-900 border border-zinc-700 rounded-xl p-6">
+            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+            <p className="text-zinc-300 font-medium">Deleting assets...</p>
           </div>
-        ))}
+        </div>
+      )}
+
+      {/* Selection bar */}
+      {selecting && (
+        <div className="flex items-center justify-between bg-zinc-800/80 border border-zinc-700 rounded-lg p-3 mb-4">
+          <p className="text-sm text-zinc-300">
+            <span className="font-bold text-white">{selectedIds.size}</span> selected
+          </p>
+          <div className="flex gap-2">
+            <Button
+              onClick={onToggleSelect}
+              variant="secondary"
+              className="bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-sm h-8"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={onDeleteSelected}
+              disabled={selectedIds.size === 0}
+              className="bg-red-600 hover:bg-red-700 text-white text-sm h-8"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Delete ({selectedIds.size})
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 ${deleting ? "pointer-events-none opacity-50" : ""}`}>
+        {assets.map((asset) => {
+          const isSelected = selectedIds.has(asset.id);
+          return (
+            <div
+              key={asset.id}
+              className={`group relative bg-zinc-800 rounded-xl overflow-hidden border transition-all cursor-pointer ${
+                isSelected
+                  ? "border-amber-500 ring-2 ring-amber-500/30"
+                  : "border-zinc-700/50 hover:border-amber-500/30"
+              }`}
+              onClick={() => handleSelect(asset)}
+            >
+              {/* Checkbox */}
+              {selecting && (
+                <div className="absolute top-2 left-2 z-10">
+                  <div
+                    className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                      isSelected
+                        ? "bg-amber-500 text-black"
+                        : "bg-zinc-700/80 border border-zinc-500"
+                    }`}
+                  >
+                    {isSelected && <Check className="w-3 h-3" />}
+                  </div>
+                </div>
+              )}
+
+              <div
+                className="aspect-square"
+                style={{
+                  background:
+                    "repeating-conic-gradient(#2a2a2a 0% 25%, #1a1a1a 0% 50%) 50% / 10px 10px",
+                }}
+              >
+                <img
+                  src={asset.resultImage}
+                  alt={asset.originalName}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute bottom-0 left-0 right-0 p-3">
+                  <p className="text-xs text-zinc-300 font-medium truncate">
+                    {asset.originalName}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    {asset.provider} • {formatDateTime(asset.timestamp)}
+                  </p>
+                </div>
+                {!selecting && (
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-7 w-7 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownload(asset);
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5 text-zinc-300" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-7 w-7 bg-zinc-800/90 hover:bg-red-900 border border-zinc-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(asset.id);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-zinc-300" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Detail Modal */}
       <Dialog
         open={open}
         onOpenChange={(v) => {
+          if (deleting) return;
           setOpen(v);
           if (!v) setSelected(null);
         }}
@@ -188,13 +272,13 @@ export function AssetsGallery({ assets, onDelete }: AssetsGalleryProps) {
                       </p>
                     </div>
                   </div>
-                  {selected.creditsUsed !== undefined && (
+                  {selected.creditsUsed != null && (
                     <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2 min-w-0 shrink-0">
                       <Coins className="w-4 h-4 text-amber-500 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-zinc-500 text-xs">Credits used</p>
                         <p className="text-zinc-300 font-medium whitespace-nowrap">
-                          {selected.creditsUsed}
+                          {selected.creditsUsed === 0 ? "Free call" : selected.creditsUsed}
                         </p>
                       </div>
                     </div>
@@ -222,10 +306,11 @@ export function AssetsGallery({ assets, onDelete }: AssetsGalleryProps) {
                   </Button>
                   <Button
                     onClick={() => {
-                      onDelete(selected.id);
+                      onSelect(selected.id);
                       setOpen(false);
                       setSelected(null);
                     }}
+                    disabled={deleting}
                     className="bg-danger hover:bg-danger/90 text-white"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />

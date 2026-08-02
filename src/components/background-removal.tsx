@@ -34,20 +34,43 @@ const PROVIDERS = [
 ] as const;
 
 const SIZE_OPTIONS = [
-  { id: "auto", name: "Auto", description: "Up to 25MP • 1 credit", credits: 1 },
+  {
+    id: "auto",
+    name: "Auto",
+    description: "Up to 25MP • Uses free monthly calls",
+    credits: 0,
+    freeTier: true,
+  },
   {
     id: "full",
     name: "Full Resolution",
-    description: "Up to 25MP • 1 credit (max quality)",
+    description: "Up to 25MP • 1 paid credit per image",
     credits: 1,
+    freeTier: false,
   },
   {
     id: "50MP",
     name: "Ultra (50MP)",
-    description: "Up to 50MP • 1 credit (highest detail)",
+    description: "Up to 50MP • 1 paid credit per image",
     credits: 1,
+    freeTier: false,
   },
 ] as const;
+
+const ERROR_MESSAGES: Record<string, string> = {
+  insufficient_credits:
+    "You don't have enough credits for this quality. Try using Auto mode or upgrade your remove.bg plan.",
+  rate_limit:
+    "Too many requests. Please wait a moment and try again.",
+  api_key_missing:
+    "Service not configured. Please contact the administrator.",
+  clearbackdrop_failed:
+    "ClearBackdrop is temporarily unavailable. Please try again later.",
+  removebg_failed:
+    "remove.bg encountered an error. Please try again later.",
+  forbidden:
+    "Access denied. Please check your API key configuration.",
+};
 
 interface AccountInfo {
   credits: number | null;
@@ -67,6 +90,7 @@ interface BackgroundRemovalProps {
     provider: string;
     size?: string;
     creditsUsed?: number;
+    file: Blob;
   }) => void;
 }
 
@@ -143,7 +167,8 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to remove background");
+        const friendlyMessage = ERROR_MESSAGES[data.error] || "Something went wrong. Please try again.";
+        throw new Error(friendlyMessage);
       }
 
       setResult(data.image);
@@ -159,12 +184,25 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
         );
       }
 
+      // Refresh credits/quota after successful removal
+      fetch("/api/remove-bg")
+        .then((r) => r.json())
+        .then((refreshData) => {
+          if (refreshData.removebg) setAccountInfo(refreshData.removebg);
+          if (refreshData.clearbackdrop) setClearBackdropQuota(refreshData.clearbackdrop);
+        })
+        .catch(() => {});
+
+      const imgResponse = await fetch(data.image);
+      const blob = await imgResponse.blob();
+
       onAssetCreated?.({
         originalName: originalFile.name,
         resultImage: data.image,
         provider,
         size: isRemovebg ? size : undefined,
         creditsUsed: data.creditsUsed ?? undefined,
+        file: blob,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -279,6 +317,11 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
               ))}
             </SelectContent>
           </Select>
+          {size !== "auto" && (
+            <p className="text-xs text-amber-400/80 mt-1">
+              This option uses paid credits. Free tier only supports &quot;Auto&quot; (uses free monthly calls).
+            </p>
+          )}
         </div>
       )}
 
