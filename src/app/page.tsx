@@ -3,162 +3,72 @@
 import { BackgroundRemoval } from "@/components/background-removal";
 import { AssetsGallery } from "@/components/assets-gallery";
 import { useAssets } from "@/hooks/use-assets";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Scissors,
-  Grid3x3,
-  ZoomIn,
-  Palette,
-  Volume2,
-  Gamepad2,
-  Hammer,
-  Wrench,
-  FolderOpen,
   ImageIcon,
+  ListCheck,
+  HardDrive,
 } from "lucide-react";
-
-const TOOLS = [
-  {
-    id: "bg-removal",
-    name: "Background Removal",
-    icon: Scissors,
-    description: "Remove image backgrounds",
-  },
-  {
-    id: "coming-1",
-    name: "Sprite Sheet Cutter",
-    icon: Grid3x3,
-    description: "Coming soon",
-    disabled: true,
-  },
-  {
-    id: "coming-2",
-    name: "Pixel Art Scaler",
-    icon: ZoomIn,
-    description: "Coming soon",
-    disabled: true,
-  },
-  {
-    id: "coming-3",
-    name: "Color Palette Extractor",
-    icon: Palette,
-    description: "Coming soon",
-    disabled: true,
-  },
-  {
-    id: "coming-4",
-    name: "Audio Converter",
-    icon: Volume2,
-    description: "Coming soon",
-    disabled: true,
-  },
-];
+import { Sidebar } from "@/components/sidebar";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState("bg-removal");
-  const { assets, addAsset, removeAsset, clearAssets } = useAssets();
+  const {
+    assets,
+    deleting,
+    addAsset,
+    removeAssets,
+    storageUsed,
+    storageLimit,
+  } = useAssets();
+
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const handleToggleSelect = useCallback(() => {
+    setSelecting((prev) => !prev);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    removeAssets(Array.from(selectedIds));
+    setSelectedIds(new Set());
+    setSelecting(false);
+  }, [selectedIds, removeAssets]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  const storagePercent = Math.min((storageUsed / storageLimit) * 100, 100);
 
   return (
     <div className="flex min-h-screen bg-[#0f0f1a] text-white">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#16162a] border-r border-zinc-800 flex flex-col shrink-0">
-        <div className="p-4 border-b border-zinc-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center">
-              <Gamepad2 className="w-6 h-6 text-black" />
-            </div>
-            <div>
-              <h1 className="font-bold text-white leading-tight">
-                GameDev Tools
-              </h1>
-              <p className="text-xs text-zinc-500">Free utilities</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-3 space-y-1">
-          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2">
-            Tools
-          </p>
-          {TOOLS.map((tool) => {
-            const Icon = tool.icon;
-            return (
-              <button
-                key={tool.id}
-                onClick={() => !tool.disabled && setActiveTool(tool.id)}
-                disabled={tool.disabled}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  activeTool === tool.id
-                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                    : tool.disabled
-                      ? "text-zinc-600 cursor-not-allowed"
-                      : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
-                }`}
-              >
-                <Icon
-                  className={`w-5 h-5 shrink-0 ${
-                    activeTool === tool.id
-                      ? "text-amber-400"
-                      : tool.disabled
-                        ? "text-zinc-600"
-                        : "text-zinc-500"
-                  }`}
-                />
-                <div className="text-left">
-                  <div className="font-medium">{tool.name}</div>
-                  {tool.disabled && (
-                    <div className="text-[10px] text-zinc-600">
-                      {tool.description}
-                    </div>
-                  )}
-                </div>
-                {tool.disabled && (
-                  <span className="ml-auto text-[10px] bg-zinc-800 text-zinc-600 px-1.5 py-0.5 rounded">
-                    SOON
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          <div className="pt-4">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2">
-              Library
-            </p>
-            <button
-              onClick={() => setActiveTool("assets")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                activeTool === "assets"
-                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                  : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
-              }`}
-            >
-              <FolderOpen
-                className={`w-5 h-5 shrink-0 ${
-                  activeTool === "assets" ? "text-amber-400" : "text-zinc-500"
-                }`}
-              />
-              <div className="text-left font-medium">Assets</div>
-              {assets.length > 0 && (
-                <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">
-                  {assets.length}
-                </span>
-              )}
-            </button>
-          </div>
-        </nav>
-
-        <div className="p-4 border-t border-zinc-800">
-          <div className="flex items-center justify-center gap-2 text-zinc-600">
-            <Hammer className="w-3.5 h-3.5" />
-            <p className="text-[10px]">Built for game developers</p>
-            <Wrench className="w-3.5 h-3.5" />
-          </div>
-        </div>
-      </aside>
+      <Sidebar
+        assetCount={assets.length}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+      />
 
       {/* Main content */}
-      <main className="flex-1 p-8 overflow-auto">
+      <main className="flex-1 ml-64 p-8 overflow-auto">
         <div className="max-w-4xl mx-auto">
           {activeTool === "bg-removal" && (
             <div className="space-y-6">
@@ -190,14 +100,50 @@ export default function Home() {
                 </div>
                 {assets.length > 0 && (
                   <button
-                    onClick={clearAssets}
-                    className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                    onClick={handleToggleSelect}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                      selecting
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "text-zinc-500 hover:text-zinc-300 border border-zinc-700/50 hover:border-zinc-600"
+                    }`}
                   >
-                    Clear all
+                    <ListCheck className="w-3.5 h-3.5" />
+                    {selecting ? "Exit selection" : "Select"}
                   </button>
                 )}
               </div>
-              <AssetsGallery assets={assets} onDelete={removeAsset} />
+
+              {/* Storage indicator */}
+              <div className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-3">
+                <HardDrive className="w-4 h-4 text-zinc-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-zinc-400">
+                      {assets.length} file{assets.length !== 1 ? "s" : ""} •{" "}
+                      {formatBytes(storageUsed)} / 1 GB
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {storagePercent.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all"
+                      style={{ width: `${storagePercent}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <AssetsGallery
+                assets={assets}
+                deleting={deleting}
+                selecting={selecting}
+                selectedIds={selectedIds}
+                onSelect={handleSelect}
+                onDeleteSelected={handleDeleteSelected}
+                onToggleSelect={handleToggleSelect}
+              />
             </div>
           )}
         </div>

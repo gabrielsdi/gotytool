@@ -13,8 +13,10 @@ async function clearbackdrop(image: File) {
   );
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ClearBackdrop ${res.status}: ${text}`);
+    if (res.status === 429) {
+      throw new Error("rate_limit");
+    }
+    throw new Error("clearbackdrop_failed");
   }
 
   const buf = await res.arrayBuffer();
@@ -29,9 +31,7 @@ async function clearbackdrop(image: File) {
 async function removebg(image: File, size: SizeOption) {
   const apiKey = process.env.REMOVEBG_API_KEY;
   if (!apiKey) {
-    throw new Error(
-      "remove.bg API key not configured. Set REMOVEBG_API_KEY in .env.local"
-    );
+    throw new Error("api_key_missing");
   }
 
   const formData = new FormData();
@@ -45,8 +45,16 @@ async function removebg(image: File, size: SizeOption) {
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`remove.bg ${res.status}: ${text}`);
+    if (res.status === 402) {
+      throw new Error("insufficient_credits");
+    }
+    if (res.status === 429) {
+      throw new Error("rate_limit");
+    }
+    if (res.status === 403) {
+      throw new Error("forbidden");
+    }
+    throw new Error("removebg_failed");
   }
 
   const buf = await res.arrayBuffer();
