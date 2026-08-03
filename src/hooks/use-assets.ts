@@ -26,12 +26,23 @@ function loadGuestAssets(): Asset[] {
   }
 }
 
-function saveGuestAssets(assets: Asset[]) {
-  if (typeof window === "undefined") return;
+function saveGuestAssets(assets: Asset[]): Asset[] | null {
+  if (typeof window === "undefined") return null;
   try {
     localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(assets));
+    return assets;
   } catch {
-    console.error("Failed to save to localStorage");
+    const sorted = [...assets].sort((a, b) => a.timestamp - b.timestamp);
+    while (sorted.length > 0) {
+      sorted.shift();
+      try {
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(sorted));
+        return sorted;
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 }
 
@@ -162,12 +173,17 @@ export function useAssets() {
         // Guest: save to localStorage
         const guestAssets = loadGuestAssets();
         const updated = [newAsset, ...guestAssets];
-        saveGuestAssets(updated);
-        setAssets(updated);
+        const savedAssets = saveGuestAssets(updated);
+        if (!savedAssets) {
+          return false;
+        }
+        setAssets(savedAssets);
 
-        const base64 = newAsset.resultImage.split(",")[1] || [];
-        const estimatedSize = Math.ceil((base64.length * 3) / 4);
-        setStorageUsed((prev) => prev + estimatedSize);
+        const totalSize = savedAssets.reduce((sum, a) => {
+          const base64 = a.resultImage.split(",")[1] || "";
+          return sum + Math.ceil((base64.length * 3) / 4);
+        }, 0);
+        setStorageUsed(totalSize);
         return true;
       }
 
@@ -246,16 +262,15 @@ export function useAssets() {
         if (!user) {
           // Guest: remove from localStorage
           const guestAssets = loadGuestAssets();
-          const asset = guestAssets.find((a) => a.id === id);
           const updated = guestAssets.filter((a) => a.id !== id);
-          saveGuestAssets(updated);
-          setAssets(updated);
+          const savedAssets = saveGuestAssets(updated);
+          setAssets(savedAssets || updated);
 
-          if (asset) {
-            const base64 = asset.resultImage.split(",")[1] || "";
-            const estimatedSize = Math.ceil((base64.length * 3) / 4);
-            setStorageUsed((prev) => Math.max(0, prev - estimatedSize));
-          }
+          const totalSize = (savedAssets || updated).reduce((sum, a) => {
+            const base64 = a.resultImage.split(",")[1] || "";
+            return sum + Math.ceil((base64.length * 3) / 4);
+          }, 0);
+          setStorageUsed(totalSize);
           return;
         }
 
@@ -303,16 +318,15 @@ export function useAssets() {
         if (!user) {
           // Guest: remove from localStorage
           const guestAssets = loadGuestAssets();
-          const removed = guestAssets.filter((a) => ids.includes(a.id));
           const updated = guestAssets.filter((a) => !ids.includes(a.id));
-          saveGuestAssets(updated);
-          setAssets(updated);
+          const savedAssets = saveGuestAssets(updated);
+          setAssets(savedAssets || updated);
 
-          const freedSize = removed.reduce((sum, asset) => {
-            const base64 = asset.resultImage.split(",")[1] || "";
+          const totalSize = (savedAssets || updated).reduce((sum, a) => {
+            const base64 = a.resultImage.split(",")[1] || "";
             return sum + Math.ceil((base64.length * 3) / 4);
           }, 0);
-          setStorageUsed((prev) => Math.max(0, prev - freedSize));
+          setStorageUsed(totalSize);
           return;
         }
 
