@@ -2,6 +2,7 @@
 
 import { BackgroundRemoval } from "@/components/background-removal";
 import { AssetsGallery } from "@/components/assets-gallery";
+import { IconGenerator } from "@/components/icon-generator";
 import { useAssets } from "@/hooks/use-assets";
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -9,6 +10,7 @@ import {
   ImageIcon,
   ListCheck,
   HardDrive,
+  Gamepad2,
 } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 import { AuthModalLogin, AuthModalRegister } from "@/components/auth-modal";
@@ -101,6 +103,22 @@ export default function Home() {
                 </p>
               </div>
               <BackgroundRemoval onAssetCreated={addAsset} isGuest={!user} />
+            </div>
+          )}
+
+          {activeTool === "icon-generator" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Gamepad2 className="w-6 h-6 text-amber-500" />
+                  Game Icons
+                </h2>
+                <p className="text-zinc-400 mt-1">
+                  Generate AI-powered game icons. Describe your icon and get
+                  multiple sizes ready for your game.
+                </p>
+              </div>
+              <IconGenerator onAssetCreated={addAsset} isGuest={!user} />
             </div>
           )}
 

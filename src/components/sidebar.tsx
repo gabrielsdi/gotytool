@@ -34,6 +34,12 @@ const TOOLS = [
     description: "Remove image backgrounds",
   },
   {
+    id: "icon-generator",
+    name: "Game Icons",
+    icon: Gamepad2,
+    description: "AI-powered game icon generator",
+  },
+  {
     id: "coming-1",
     name: "Sprite Sheet Cutter",
     icon: Grid3x3,
@@ -51,13 +57,6 @@ const TOOLS = [
     id: "coming-3",
     name: "Color Palette Extractor",
     icon: Palette,
-    description: "Coming soon",
-    disabled: true,
-  },
-  {
-    id: "coming-4",
-    name: "Audio Converter",
-    icon: Volume2,
     description: "Coming soon",
     disabled: true,
   },
