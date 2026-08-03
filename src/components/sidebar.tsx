@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOut } from "@/app/actions/auth";
@@ -68,19 +67,18 @@ interface SidebarProps {
   assetCount: number;
   activeTool: string;
   onToolChange: (tool: string) => void;
+  user: User | null;
+  onLoginClick: () => void;
+  onRegisterClick: () => void;
 }
 
-export function Sidebar({ assetCount, activeTool, onToolChange }: SidebarProps) {
-  const [user, setUser] = useState<User | null>(null);
+export function Sidebar({ assetCount, activeTool, onToolChange, user, onLoginClick, onRegisterClick }: SidebarProps) {
   const supabase = createClient();
   const router = useRouter();
   const pathname = usePathname();
 
   const isSettings = pathname === "/user/settings";
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
-  }, [supabase]);
+  const displayName = user?.user_metadata?.full_name || user?.email || "User";
 
   const handleToolClick = (toolId: string) => {
     if (isSettings) {
@@ -181,7 +179,7 @@ export function Sidebar({ assetCount, activeTool, onToolChange }: SidebarProps) 
       </nav>
 
       <div className="p-4 border-t border-zinc-800 space-y-3">
-        {user && (
+        {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-800/50 transition-colors cursor-pointer">
                 {user.user_metadata?.avatar_url ? (
@@ -196,11 +194,11 @@ export function Sidebar({ assetCount, activeTool, onToolChange }: SidebarProps) 
                   />
                 ) : null}
                 <div className={`w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-xs font-bold text-black ${user.user_metadata?.avatar_url ? "hidden" : ""}`}>
-                  {(user.user_metadata?.full_name || user.email || "?").charAt(0).toUpperCase()}
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-sm font-medium text-zinc-300 truncate">
-                    {user.user_metadata?.full_name || user.email}
+                    {displayName}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-500" />
@@ -224,6 +222,21 @@ export function Sidebar({ assetCount, activeTool, onToolChange }: SidebarProps) 
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        ) : (
+          <div className="space-y-2">
+            <button
+              onClick={onRegisterClick}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-black font-medium py-2 px-3 rounded-lg text-sm transition-colors"
+            >
+              Register
+            </button>
+            <button
+              onClick={onLoginClick}
+              className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium py-2 px-3 rounded-lg text-sm transition-colors border border-zinc-700"
+            >
+              Log in
+            </button>
+          </div>
         )}
         <div className="flex items-center justify-center gap-2 text-zinc-600">
           <Hammer className="w-3.5 h-3.5" />

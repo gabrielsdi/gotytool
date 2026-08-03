@@ -3,7 +3,7 @@
 import { BackgroundRemoval } from "@/components/background-removal";
 import { AssetsGallery } from "@/components/assets-gallery";
 import { useAssets } from "@/hooks/use-assets";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Scissors,
   ImageIcon,
@@ -11,9 +11,14 @@ import {
   HardDrive,
 } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
+import { AuthModalLogin, AuthModalRegister } from "@/components/auth-modal";
+import { createClient } from "@/lib/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState("bg-removal");
+  const [user, setUser] = useState<User | null>(null);
+  const supabase = createClient();
   const {
     assets,
     deleting,
@@ -21,10 +26,17 @@ export default function Home() {
     removeAssets,
     storageUsed,
     storageLimit,
+    isGuest,
   } = useAssets();
 
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  }, [supabase]);
 
   const handleToggleSelect = useCallback(() => {
     setSelecting((prev) => !prev);
@@ -65,7 +77,13 @@ export default function Home() {
         assetCount={assets.length}
         activeTool={activeTool}
         onToolChange={setActiveTool}
+        user={user}
+        onLoginClick={() => setLoginModalOpen(true)}
+        onRegisterClick={() => setRegisterModalOpen(true)}
       />
+
+      <AuthModalLogin open={loginModalOpen} onOpenChange={setLoginModalOpen} />
+      <AuthModalRegister open={registerModalOpen} onOpenChange={setRegisterModalOpen} />
 
       {/* Main content */}
       <main className="flex-1 ml-64 p-8 overflow-auto">
@@ -82,7 +100,7 @@ export default function Home() {
                   transparent PNG.
                 </p>
               </div>
-              <BackgroundRemoval onAssetCreated={addAsset} />
+              <BackgroundRemoval onAssetCreated={addAsset} isGuest={!user} />
             </div>
           )}
 
@@ -113,27 +131,29 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Storage indicator */}
-              <div className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-3">
-                <HardDrive className="w-4 h-4 text-zinc-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-zinc-400">
-                      {assets.length} file{assets.length !== 1 ? "s" : ""} •{" "}
-                      {formatBytes(storageUsed)} / 1 GB
-                    </span>
-                    <span className="text-xs text-zinc-500">
-                      {storagePercent.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-amber-500 rounded-full transition-all"
-                      style={{ width: `${storagePercent}%` }}
-                    />
+              {/* Storage indicator - only for logged in users */}
+              {!isGuest && (
+                <div className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg px-4 py-3">
+                  <HardDrive className="w-4 h-4 text-zinc-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-zinc-400">
+                        {assets.length} file{assets.length !== 1 ? "s" : ""} •{" "}
+                        {formatBytes(storageUsed)} / {formatBytes(storageLimit)}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        {storagePercent.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full transition-all"
+                        style={{ width: `${storagePercent}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <AssetsGallery
                 assets={assets}
@@ -143,6 +163,8 @@ export default function Home() {
                 onSelect={handleSelect}
                 onDeleteSelected={handleDeleteSelected}
                 onToggleSelect={handleToggleSelect}
+                isGuest={isGuest}
+                onAuthClick={() => setLoginModalOpen(true)}
               />
             </div>
           )}
