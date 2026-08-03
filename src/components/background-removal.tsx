@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Scissors,
   Upload,
@@ -18,6 +19,7 @@ import {
   Coins,
   Zap,
   X,
+  Sliders,
 } from "lucide-react";
 
 const PROVIDERS = [
@@ -109,7 +111,19 @@ export function BackgroundRemoval({ onAssetCreated, isGuest }: BackgroundRemoval
   const [creditsUsed, setCreditsUsed] = useState<number | null>(null);
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [clearBackdropQuota, setClearBackdropQuota] = useState<ClearBackdropQuota | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [preprocess, setPreprocess] = useState({
+    normalize: true,
+    denoise: true,
+    sharpen: true,
+  });
+  const [postprocess, setPostprocess] = useState({
+    edgeSmoothing: true,
+    removeHalo: true,
+    preserveDetail: true,
+  });
 
   const isRemovebg = provider === "removebg";
   const isClearBackdrop = provider === "clearbackdrop";
@@ -172,6 +186,11 @@ export function BackgroundRemoval({ onAssetCreated, isGuest }: BackgroundRemoval
       formData.append("provider", provider);
       if (isRemovebg) formData.append("size", size);
 
+      if (isClearBackdrop) {
+        formData.append("preprocess", JSON.stringify(preprocess));
+        formData.append("postprocess", JSON.stringify(postprocess));
+      }
+
       const res = await fetch("/api/remove-bg", {
         method: "POST",
         body: formData,
@@ -226,7 +245,7 @@ export function BackgroundRemoval({ onAssetCreated, isGuest }: BackgroundRemoval
     } finally {
       setLoading(false);
     }
-  }, [originalFile, provider, size, isRemovebg, onAssetCreated]);
+  }, [originalFile, provider, size, isRemovebg, isClearBackdrop, preprocess, postprocess, onAssetCreated]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -348,6 +367,87 @@ export function BackgroundRemoval({ onAssetCreated, isGuest }: BackgroundRemoval
             <p className="text-xs text-amber-400/80 mt-1">
               This option uses paid credits. Free tier only supports &quot;Auto&quot; (uses free monthly calls).
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Processing options (ClearBackdrop only) */}
+      {isClearBackdrop && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowOptions(!showOptions)}
+            className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-300 transition-colors"
+          >
+            <Sliders className="w-4 h-4" />
+            Processing Options
+            <svg
+              className={`w-3 h-3 transition-transform ${showOptions ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showOptions && (
+            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-4 space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                  Before removal (preprocessing)
+                </p>
+                <div className="space-y-2">
+                  <Checkbox
+                    checked={preprocess.normalize}
+                    onCheckedChange={(v) => setPreprocess((p) => ({ ...p, normalize: v }))}
+                    label="Normalize contrast"
+                    description="Enhance contrast for better edge detection"
+                  />
+                  <Checkbox
+                    checked={preprocess.denoise}
+                    onCheckedChange={(v) => setPreprocess((p) => ({ ...p, denoise: v }))}
+                    label="Reduce noise"
+                    description="Remove camera noise that can confuse the model"
+                  />
+                  <Checkbox
+                    checked={preprocess.sharpen}
+                    onCheckedChange={(v) => setPreprocess((p) => ({ ...p, sharpen: v }))}
+                    label="Sharpen edges"
+                    description="Mild sharpening for clearer boundaries"
+                  />
+                </div>
+              </div>
+
+              <div className="h-px bg-zinc-700/50" />
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                  After removal (postprocessing)
+                </p>
+                <div className="space-y-2">
+                  <Checkbox
+                    checked={postprocess.edgeSmoothing}
+                    onCheckedChange={(v) => setPostprocess((p) => ({ ...p, edgeSmoothing: v }))}
+                    label="Smooth edges"
+                    description="Soften jagged edges for a cleaner look"
+                  />
+                  <Checkbox
+                    checked={postprocess.removeHalo}
+                    onCheckedChange={(v) => setPostprocess((p) => ({ ...p, removeHalo: v }))}
+                    label="Remove color halos"
+                    description="Eliminate color fringe around subject edges"
+                  />
+                  <Checkbox
+                    checked={postprocess.preserveDetail}
+                    onCheckedChange={(v) => setPostprocess((p) => ({ ...p, preserveDetail: v }))}
+                    label="Preserve fine details"
+                    description="Keep hair, text, and thin structures intact"
+                  />
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

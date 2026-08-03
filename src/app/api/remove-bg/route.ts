@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  refineEdges,
+  preprocessForBackgroundRemoval,
+  type PreprocessOptions,
+  type RefineOptions,
+} from "@/lib/image-refine";
 
 type Provider = "clearbackdrop" | "removebg";
 type SizeOption = "auto" | "full" | "50MP";
 
-async function clearbackdrop(image: File) {
+interface PreprocessFlags {
+  normalize?: boolean;
+  denoise?: boolean;
+  sharpen?: boolean;
+}
+
+interface PostprocessFlags {
+  edgeSmoothing?: boolean;
+  removeHalo?: boolean;
+  preserveDetail?: boolean;
+}
+
+async function clearbackdrop(
+  image: File,
+  preprocessFlags: PreprocessFlags,
+  postprocessFlags: PostprocessFlags
+) {
+  const imageBuffer = Buffer.from(await image.arrayBuffer());
+
+  let preprocessed: Buffer;
+  if (preprocessFlags.normalize || preprocessFlags.denoise || preprocessFlags.sharpen) {
+    const preprocessOpts: PreprocessOptions = {};
+    if (preprocessFlags.normalize) preprocessOpts.normalize = true;
+    if (preprocessFlags.denoise) preprocessOpts.denoise = true;
+    if (preprocessFlags.sharpen) preprocessOpts.sharpen = true;
+    preprocessed = await preprocessForBackgroundRemoval(imageBuffer, preprocessOpts);
+  } else {
+    preprocessed = imageBuffer;
+  }
+
   const formData = new FormData();
-  formData.append("image", image);
+  const blob = new Blob([new Uint8Array(preprocessed)], { type: "image/png" });
+  formData.append("image", blob, "image.png");
 
   const res = await fetch(
     "https://clearbackdrop.com/api/v1/remove-background",
@@ -20,8 +56,24 @@ async function clearbackdrop(image: File) {
   }
 
   const buf = await res.arrayBuffer();
+  const resultBuffer = Buffer.from(buf);
+
+  let refinedBuffer: Buffer;
+  if (postprocessFlags.edgeSmoothing || postprocessFlags.removeHalo || postprocessFlags.preserveDetail) {
+    const refineOpts: RefineOptions = {};
+    if (postprocessFlags.edgeSmoothing) refineOpts.edgeSmoothing = 2;
+    if (postprocessFlags.removeHalo) {
+      refineOpts.removeHalo = true;
+      refineOpts.haloRadius = 3;
+    }
+    if (postprocessFlags.preserveDetail) refineOpts.preserveDetail = true;
+    refinedBuffer = await refineEdges(resultBuffer, refineOpts);
+  } else {
+    refinedBuffer = resultBuffer;
+  }
+
   return {
-    image: `data:image/png;base64,${Buffer.from(buf).toString("base64")}`,
+    image: `data:image/png;base64,${refinedBuffer.toString("base64")}`,
     remaining: res.headers.get("X-Remaining"),
     creditsUsed: null,
     creditsTotal: null,
@@ -120,6 +172,23 @@ export async function POST(request: NextRequest) {
     const provider = (formData.get("provider") as Provider) || "clearbackdrop";
     const size = (formData.get("size") as SizeOption) || "auto";
 
+    let preprocessFlags: PreprocessFlags = { normalize: true, denoise: true, sharpen: true };
+    let postprocessFlags: PostprocessFlags = { edgeSmoothing: true, removeHalo: true, preserveDetail: true };
+
+    const preprocessRaw = formData.get("preprocess");
+    if (preprocessRaw) {
+      try {
+        preprocessFlags = JSON.parse(preprocessRaw as string);
+      } catch {}
+    }
+
+    const postprocessRaw = formData.get("postprocess");
+    if (postprocessRaw) {
+      try {
+        postprocessFlags = JSON.parse(postprocessRaw as string);
+      } catch {}
+    }
+
     if (!image) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
@@ -132,7 +201,7 @@ export async function POST(request: NextRequest) {
         break;
       case "clearbackdrop":
       default:
-        result = await clearbackdrop(image);
+        result = await clearbackdrop(image, preprocessFlags, postprocessFlags);
         break;
     }
 
