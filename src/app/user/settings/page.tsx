@@ -27,7 +27,7 @@ export default function UserSettingsPage() {
         setUser(data.user);
         setFullName(data.user.user_metadata?.full_name || "");
       } else {
-        router.push("/login");
+        router.push("/");
       }
     });
   }, [supabase, router]);
@@ -61,7 +61,7 @@ export default function UserSettingsPage() {
 
   return (
     <div className="flex min-h-screen bg-[#0f0f1a] text-white">
-      <Sidebar assetCount={0} activeTool="settings" onToolChange={() => {}} />
+      <Sidebar assetCount={0} activeTool="settings" onToolChange={() => {}} user={user} onLoginClick={() => {}} onRegisterClick={() => {}} />
 
       {/* Main content */}
       <main className="flex-1 ml-64 p-8 overflow-auto">

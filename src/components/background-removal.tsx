@@ -70,6 +70,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "remove.bg encountered an error. Please try again later.",
   forbidden:
     "Access denied. Please check your API key configuration.",
+  storage_limit_exceeded:
+    "Storage limit reached. Delete some assets to free up space.",
 };
 
 interface AccountInfo {
@@ -91,10 +93,11 @@ interface BackgroundRemovalProps {
     size?: string;
     creditsUsed?: number;
     file: Blob;
-  }) => void;
+  }) => boolean | void | Promise<boolean | void>;
+  isGuest?: boolean;
 }
 
-export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
+export function BackgroundRemoval({ onAssetCreated, isGuest }: BackgroundRemovalProps) {
   const [original, setOriginal] = useState<string | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -110,6 +113,16 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
 
   const isRemovebg = provider === "removebg";
   const isClearBackdrop = provider === "clearbackdrop";
+
+  const availableProviders = isGuest
+    ? PROVIDERS.filter((p) => p.id === "clearbackdrop")
+    : PROVIDERS;
+
+  useEffect(() => {
+    if (isGuest && provider === "removebg") {
+      setProvider("clearbackdrop");
+    }
+  }, [isGuest, provider]);
 
   useEffect(() => {
     if (isRemovebg) {
@@ -196,7 +209,7 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
       const imgResponse = await fetch(data.image);
       const blob = await imgResponse.blob();
 
-      onAssetCreated?.({
+      const saved = await onAssetCreated?.({
         originalName: originalFile.name,
         resultImage: data.image,
         provider,
@@ -204,6 +217,10 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
         creditsUsed: data.creditsUsed ?? undefined,
         file: blob,
       });
+
+      if (saved === false) {
+        throw new Error("storage_limit_exceeded");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -246,46 +263,56 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
   return (
     <div className="w-full max-w-4xl space-y-6">
       {/* Provider selector */}
-      <div className="space-y-1">
-        <label className="text-sm font-medium text-zinc-300">Engine</label>
-        <Select
-          value={provider}
-          onValueChange={(v) => {
-            if (v && !loading) {
-              setProvider(v);
-              setRemaining(null);
-              setCreditsUsed(null);
-              if (v === "clearbackdrop") {
-                fetch("/api/remove-bg")
-                  .then((r) => r.json())
-                  .then((data) => {
-                    if (data.clearbackdrop) setClearBackdropQuota(data.clearbackdrop);
-                  })
-                  .catch(() => {});
+      {isGuest ? (
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-zinc-300">Engine</label>
+          <div className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-300">
+            <span className="font-medium">ClearBackdrop</span>
+            <span className="ml-2 text-zinc-500 text-xs">Free - 100 images/hour</span>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-zinc-300">Engine</label>
+          <Select
+            value={provider}
+            onValueChange={(v) => {
+              if (v && !loading) {
+                setProvider(v);
+                setRemaining(null);
+                setCreditsUsed(null);
+                if (v === "clearbackdrop") {
+                  fetch("/api/remove-bg")
+                    .then((r) => r.json())
+                    .then((data) => {
+                      if (data.clearbackdrop) setClearBackdropQuota(data.clearbackdrop);
+                    })
+                    .catch(() => {});
+                }
               }
-            }
-          }}
-          disabled={loading}
-        >
-          <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-white disabled:opacity-50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
-            {PROVIDERS.map((p) => (
-              <SelectItem
-                key={p.id}
-                value={p.id}
-                className="text-white focus:bg-zinc-700 focus:text-white"
-              >
-                <span className="font-medium">{p.name}</span>
-                <span className="ml-2 text-zinc-400 text-xs">
-                  {p.description}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            }}
+            disabled={loading}
+          >
+            <SelectTrigger className="w-full bg-zinc-800 border-zinc-700 text-white disabled:opacity-50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-800 border-zinc-700">
+              {PROVIDERS.map((p) => (
+                <SelectItem
+                  key={p.id}
+                  value={p.id}
+                  className="text-white focus:bg-zinc-700 focus:text-white"
+                >
+                  <span className="font-medium">{p.name}</span>
+                  <span className="ml-2 text-zinc-400 text-xs">
+                    {p.description}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Size selector (remove.bg only) */}
       {isRemovebg && (
@@ -515,11 +542,18 @@ export function BackgroundRemoval({ onAssetCreated }: BackgroundRemovalProps) {
             <span className="text-zinc-400 font-medium">ClearBackdrop</span> —
             Free, no API key needed. 100 images per hour.
           </li>
-          <li>
-            <span className="text-zinc-400 font-medium">remove.bg</span> — Best
-            quality. 50 free credits/month. Each image costs 1 credit.
-          </li>
+          {!isGuest && (
+            <li>
+              <span className="text-zinc-400 font-medium">remove.bg</span> — Best
+              quality. 50 free credits/month. Each image costs 1 credit.
+            </li>
+          )}
         </ul>
+        {isGuest && (
+          <p className="text-xs text-amber-400/70 mt-2">
+            Sign in to unlock remove.bg for best quality results.
+          </p>
+        )}
       </div>
     </div>
   );

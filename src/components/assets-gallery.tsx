@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Asset } from "@/hooks/use-assets";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,11 +12,13 @@ import {
   Download,
   Trash2,
   Clock,
+  Timer,
   Coins,
   Cpu,
   Image as ImageIcon,
   Loader2,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 
 interface AssetsGalleryProps {
@@ -27,6 +29,8 @@ interface AssetsGalleryProps {
   onSelect: (id: string) => void;
   onDeleteSelected: () => void;
   onToggleSelect: () => void;
+  isGuest?: boolean;
+  onAuthClick?: () => void;
 }
 
 function formatTimestamp(ts: number) {
@@ -42,6 +46,60 @@ function formatDateTime(ts: number) {
   });
 }
 
+const EXPIRATION_DAYS = 5;
+
+function getRemainingTime(timestamp: number): { days: number; hours: number; minutes: number; expired: boolean } {
+  const createdAt = new Date(timestamp);
+  const expiresAt = new Date(createdAt.getTime() + EXPIRATION_DAYS * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const diff = expiresAt.getTime() - now.getTime();
+
+  if (diff <= 0) {
+    return { days: 0, hours: 0, minutes: 0, expired: true };
+  }
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  return { days, hours, minutes, expired: false };
+}
+
+function ExpirationBadge({ timestamp, isGuest }: { timestamp: number; isGuest?: boolean }) {
+  const [remaining, setRemaining] = useState(() => getRemainingTime(timestamp));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRemaining(getRemainingTime(timestamp));
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [timestamp]);
+
+  if (isGuest) return null;
+
+  if (remaining.expired) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">
+        <Timer className="w-3 h-3" />
+        Expired
+      </span>
+    );
+  }
+
+  const totalHours = remaining.days * 24 + remaining.hours;
+  const isUrgent = remaining.days < 1;
+
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+      isUrgent ? "text-amber-400 bg-amber-500/10" : "text-zinc-400 bg-zinc-700/50"
+    }`}>
+      <Timer className="w-3 h-3" />
+      {remaining.days > 0 && `${remaining.days}d `}
+      {remaining.hours}h
+    </span>
+  );
+}
+
 export function AssetsGallery({
   assets,
   deleting,
@@ -50,6 +108,8 @@ export function AssetsGallery({
   onSelect,
   onDeleteSelected,
   onToggleSelect,
+  isGuest,
+  onAuthClick,
 }: AssetsGalleryProps) {
   const [selected, setSelected] = useState<Asset | null>(null);
   const [open, setOpen] = useState(false);
@@ -98,6 +158,28 @@ export function AssetsGallery({
           <div className="flex flex-col items-center gap-3 bg-zinc-900 border border-zinc-700 rounded-xl p-6">
             <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
             <p className="text-zinc-300 font-medium">Deleting assets...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Guest warning */}
+      {isGuest && assets.length > 0 && (
+        <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm text-amber-400 font-medium">
+              Guest session - images are temporary
+            </p>
+            <p className="text-xs text-zinc-400">
+              Your images will be lost when you close or refresh the browser.{" "}
+              <button
+                onClick={onAuthClick}
+                className="text-amber-400 underline underline-offset-2 hover:text-amber-300"
+              >
+                Sign in
+              </button>{" "}
+              to save them permanently.
+            </p>
           </div>
         </div>
       )}
@@ -171,10 +253,13 @@ export function AssetsGallery({
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="absolute bottom-0 left-0 right-0 p-3">
-                  <p className="text-xs text-zinc-300 font-medium truncate">
-                    {asset.originalName}
-                  </p>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs text-zinc-300 font-medium truncate">
+                      {asset.originalName}
+                    </p>
+                    <ExpirationBadge timestamp={asset.timestamp} isGuest={isGuest} />
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
                     {asset.provider} • {formatDateTime(asset.timestamp)}
                   </p>
                 </div>
@@ -272,6 +357,15 @@ export function AssetsGallery({
                       </p>
                     </div>
                   </div>
+                  {!isGuest && (
+                    <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2 min-w-0 shrink-0">
+                      <Timer className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-zinc-500 text-xs">Expires in</p>
+                        <ExpirationBadge timestamp={selected.timestamp} isGuest={isGuest} />
+                      </div>
+                    </div>
+                  )}
                   {selected.creditsUsed != null && (
                     <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2 min-w-0 shrink-0">
                       <Coins className="w-4 h-4 text-amber-500 shrink-0" />
