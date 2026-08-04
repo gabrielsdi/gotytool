@@ -9,12 +9,10 @@ import { User } from "@supabase/supabase-js";
 import {
   Bone,
   Upload,
-  ArrowRightLeft,
   Film,
   Download,
   AlertCircle,
   Loader2,
-  Search,
   Check,
   Eye,
 } from "lucide-react";
@@ -41,7 +39,8 @@ interface Animation {
   id: string;
   name: string;
   category: string;
-  preview_url: string;
+  description: string;
+  url: string;
 }
 
 interface MarkerGroup {
@@ -52,13 +51,11 @@ interface MarkerGroup {
   symmetric: boolean;
 }
 
-type Step = "upload" | "mark" | "rig" | "rename" | "animate" | "export";
+type Step = "upload" | "mark" | "animate" | "export";
 
 const STEPS: { id: Step; label: string; icon: any }[] = [
   { id: "upload", label: "Upload", icon: Upload },
   { id: "mark", label: "Mark", icon: Eye },
-  { id: "rig", label: "Rig", icon: Bone },
-  { id: "rename", label: "Rename", icon: ArrowRightLeft },
   { id: "animate", label: "Animate", icon: Film },
   { id: "export", label: "Export", icon: Download },
 ];
@@ -71,12 +68,6 @@ const MARKER_GROUPS: Omit<MarkerGroup, "position">[] = [
   { id: "groin", label: "GROIN", color: "#FF69B4", symmetric: false },
 ];
 
-const SKELETON_PRESETS = [
-  { id: "ue5_manny", name: "UE5 Manny" },
-  { id: "ue4_mannequin", name: "UE4 Mannequin" },
-  { id: "metahuman", name: "MetaHuman" },
-];
-
 export default function RigFlowPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -87,12 +78,10 @@ export default function RigFlowPage() {
   const [modelName, setModelName] = useState<string | null>(null);
   const [modelFormat, setModelFormat] = useState<string | null>(null);
   const [skeleton, setSkeleton] = useState<Bone[]>([]);
-  const [renamedSkeleton, setRenamedSkeleton] = useState<Bone[]>([]);
-  const [targetSkeleton, setTargetSkeleton] = useState("ue5_manny");
   const [animations, setAnimations] = useState<Animation[]>([]);
+  const [selectedAnimation, setSelectedAnimation] = useState<Animation | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [renameResult, setRenameResult] = useState<any>(null);
   const [exportResult, setExportResult] = useState<any>(null);
 
   const [markers, setMarkers] = useState<MarkerGroup[]>(
@@ -205,7 +194,7 @@ export default function RigFlowPage() {
       if (!res.ok) throw new Error((await res.json()).error || "Rigging failed");
       const data = await res.json();
       setSkeleton(data.skeleton);
-      setStep("rename");
+      setStep("animate");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -214,32 +203,11 @@ export default function RigFlowPage() {
   }, [modelId, markers]);
 
   // --- Rename ---
-  const handleRename = useCallback(async () => {
-    if (!modelId) return;
-    setProcessing(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API}/api/rename`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_id: modelId, target_skeleton: targetSkeleton }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "Rename failed");
-      const data = await res.json();
-      setRenameResult(data);
-      setRenamedSkeleton(data.renamed_skeleton);
-      setStep("animate");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setProcessing(false);
-    }
-  }, [modelId, targetSkeleton]);
 
   // --- Animations ---
-  const fetchAnimations = useCallback(async (query = "") => {
+  const fetchAnimations = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/mixamo/animations?query=${query}`);
+      const res = await fetch(`${API}/api/animations`);
       if (!res.ok) return;
       const data = await res.json();
       setAnimations(data.animations || []);
@@ -248,16 +216,26 @@ export default function RigFlowPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (step === "animate") {
+      fetchAnimations();
+    }
+  }, [step, fetchAnimations]);
+
   // --- Export ---
-  const handleExport = useCallback(async (format: string) => {
+  const handleExport = useCallback(async (format: string, includeAnimation: boolean = true) => {
     if (!modelId) return;
     setProcessing(true);
     setError(null);
     try {
+      const body: any = { model_id: modelId, format };
+      if (includeAnimation && selectedAnimation) {
+        body.animation_id = selectedAnimation.id;
+      }
       const res = await fetch(`${API}/api/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_id: modelId, format }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Export failed");
       const data = await res.json();
@@ -267,7 +245,7 @@ export default function RigFlowPage() {
     } finally {
       setProcessing(false);
     }
-  }, [modelId]);
+  }, [modelId, selectedAnimation]);
 
   const handleDownload = useCallback(async () => {
     if (!exportResult?.download_url) return;
@@ -282,7 +260,7 @@ export default function RigFlowPage() {
   }, [exportResult]);
 
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
-  const displaySkeleton = renamedSkeleton.length > 0 ? renamedSkeleton : skeleton;
+  const displaySkeleton = skeleton;
   const placedCount = markers.filter((m) => m.position !== null).length;
   const allRequiredPlaced = markers.filter((m) => m.id === "chin" || m.id === "groin").every((m) => m.position !== null);
 
@@ -422,10 +400,10 @@ export default function RigFlowPage() {
                   {markers.map((m) => {
                     const isSelected = selectedMarkerId === m.id;
                     return (
-                      <button
+                      <div
                         key={m.id}
                         onClick={() => handleSelectMarker(m.id)}
-                        className={`w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left ${
+                        className={`w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left cursor-pointer ${
                           isSelected
                             ? "ring-2 ring-amber-500 bg-amber-500/20"
                             : m.position
@@ -467,7 +445,7 @@ export default function RigFlowPage() {
                         ) : isSelected ? (
                           <div className="text-[10px] text-amber-400">Active</div>
                         ) : null}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -493,97 +471,80 @@ export default function RigFlowPage() {
             )}
 
             {/* RIG (legacy fallback) */}
-            {step === "rig" && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-white text-sm">Auto-Rig</h3>
-                <p className="text-zinc-400 text-xs">Model: <span className="text-white">{modelName}</span></p>
-                <button
-                  onClick={() => setStep("mark")}
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
-                >
-                  <Eye className="w-4 h-4" /> Place Markers
-                </button>
-              </div>
-            )}
-
-            {/* RENAME */}
-            {step === "rename" && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-white text-sm">Rename Bones</h3>
-                <p className="text-zinc-400 text-xs">{skeleton.length} bones detected. Select target:</p>
-                <div className="space-y-2">
-                  {SKELETON_PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setTargetSkeleton(p.id)}
-                      className={`w-full p-3 rounded-lg border text-left text-sm transition-all ${
-                        targetSkeleton === p.id
-                          ? "border-amber-500 bg-amber-500/20 text-amber-400"
-                          : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-                      }`}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={handleRename}
-                  disabled={processing}
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-zinc-700 text-black font-medium rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
-                >
-                  {processing ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Renaming...</>
-                  ) : (
-                    <><ArrowRightLeft className="w-4 h-4" /> Apply Mapping</>
-                  )}
-                </button>
-                {renameResult && (
-                  <div className="space-y-2">
-                    <div className="p-2 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-xs flex items-center gap-2">
-                      <Check className="w-3.5 h-3.5" /> Mapped {Object.keys(renameResult.mapping_applied).length} bones
-                    </div>
-                    {renameResult.warnings?.length > 0 && (
-                      <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-400 text-xs">
-                        {renameResult.warnings.map((w: string, i: number) => <div key={i}>{w}</div>)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ANIMATE */}
             {step === "animate" && (
               <div className="space-y-4">
-                <h3 className="font-semibold text-white text-sm">Animations</h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Search Mixamo..."
-                    onKeyDown={(e) => e.key === "Enter" && fetchAnimations((e.target as HTMLInputElement).value)}
-                    className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
-                  />
-                  <button onClick={() => fetchAnimations("")} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-lg text-sm">
-                    <Search className="w-4 h-4" />
-                  </button>
+                <div>
+                  <h3 className="font-semibold text-white text-sm">Animations</h3>
+                  <p className="text-zinc-400 text-xs mt-1">
+                    {animations.length} animations available (CC0 License)
+                  </p>
                 </div>
+
+                {/* T-Pose option */}
+                <button
+                  onClick={() => setSelectedAnimation(null)}
+                  className={`w-full p-3 rounded-lg border text-left text-sm transition-all ${
+                    selectedAnimation === null
+                      ? "border-amber-500 bg-amber-500/20 text-amber-400"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Bone className="w-4 h-4" />
+                    <span className="font-medium">T-Pose (Static)</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">No animation - export skeleton only</p>
+                </button>
+                
                 {animations.length > 0 ? (
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {animations.map((a) => (
-                      <div key={a.id} className="p-2 bg-zinc-800 border border-zinc-700 rounded-lg text-xs">
-                        <p className="text-white font-medium truncate">{a.name}</p>
-                        <p className="text-zinc-500">{a.category}</p>
-                      </div>
-                    ))}
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {(() => {
+                      const categories = [...new Set(animations.map(a => a.category))];
+                      return categories.map(cat => (
+                        <div key={cat}>
+                          <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-1">
+                            {cat}
+                          </h4>
+                          <div className="space-y-1">
+                            {animations.filter(a => a.category === cat).map(a => {
+                              const isSelected = selectedAnimation?.id === a.id;
+                              return (
+                                <div 
+                                  key={a.id} 
+                                  onClick={() => setSelectedAnimation(isSelected ? null : a)}
+                                  className={`p-2 rounded-lg text-xs cursor-pointer transition-all ${
+                                    isSelected
+                                      ? "bg-amber-500/20 border border-amber-500"
+                                      : "bg-zinc-800 border border-zinc-700 hover:border-zinc-600"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <p className={`font-medium truncate ${isSelected ? "text-amber-400" : "text-white"}`}>
+                                      {a.name}
+                                    </p>
+                                    {isSelected && (
+                                      <Check className="w-3.5 h-3.5 text-amber-400" />
+                                    )}
+                                  </div>
+                                  <p className="text-zinc-500 text-[10px]">{a.description}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 ) : (
-                  <p className="text-zinc-500 text-xs text-center py-3">Search animations or skip to export.</p>
+                  <p className="text-zinc-500 text-xs text-center py-3">Loading animations...</p>
                 )}
                 <button
                   onClick={() => setStep("export")}
                   className="w-full py-2 bg-zinc-700 hover:bg-zinc-600 text-white font-medium rounded-lg transition-colors text-sm"
                 >
-                  Skip to Export
+                  Next: Export
                 </button>
               </div>
             )}
@@ -596,9 +557,37 @@ export default function RigFlowPage() {
                   <span className="text-white">{modelName}</span> —{" "}
                   <span className="text-amber-400">{displaySkeleton.length}</span> bones
                 </p>
+                
+                {/* Animation info */}
+                <div className="p-2 bg-zinc-800 border border-zinc-700 rounded-lg text-xs">
+                  {selectedAnimation ? (
+                    <div className="flex items-center gap-2">
+                      <Film className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-white">{selectedAnimation.name}</span>
+                      <button 
+                        onClick={() => setStep("animate")}
+                        className="ml-auto text-zinc-500 hover:text-amber-400"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Bone className="w-3.5 h-3.5 text-zinc-500" />
+                      <span className="text-zinc-400">T-Pose (no animation)</span>
+                      <button 
+                        onClick={() => setStep("animate")}
+                        className="ml-auto text-zinc-500 hover:text-amber-400"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleExport("fbx")}
+                    onClick={() => handleExport("fbx", true)}
                     disabled={processing}
                     className="py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-zinc-700 text-black font-medium rounded-lg flex flex-col items-center gap-1 transition-colors text-sm"
                   >
@@ -607,7 +596,7 @@ export default function RigFlowPage() {
                     <span className="text-[10px] opacity-70">Unreal Engine</span>
                   </button>
                   <button
-                    onClick={() => handleExport("glb")}
+                    onClick={() => handleExport("glb", true)}
                     disabled={processing}
                     className="py-3 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 text-white font-medium rounded-lg flex flex-col items-center gap-1 transition-colors text-sm border border-zinc-600"
                   >
@@ -616,6 +605,30 @@ export default function RigFlowPage() {
                     <span className="text-[10px] opacity-70">Blender</span>
                   </button>
                 </div>
+
+                {/* T-Pose only export */}
+                <div className="border-t border-zinc-700 pt-3">
+                  <p className="text-[10px] text-zinc-500 mb-2">Export without animation:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleExport("fbx", false)}
+                      disabled={processing}
+                      className="py-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 text-zinc-300 font-medium rounded-lg flex items-center justify-center gap-1 transition-colors text-xs border border-zinc-700"
+                    >
+                      <Bone className="w-3.5 h-3.5" />
+                      FBX T-Pose
+                    </button>
+                    <button
+                      onClick={() => handleExport("glb", false)}
+                      disabled={processing}
+                      className="py-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 text-zinc-300 font-medium rounded-lg flex items-center justify-center gap-1 transition-colors text-xs border border-zinc-700"
+                    >
+                      <Bone className="w-3.5 h-3.5" />
+                      GLB T-Pose
+                    </button>
+                  </div>
+                </div>
+
                 {exportResult && (
                   <div className="space-y-2">
                     <div className="p-2 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-xs">
@@ -657,6 +670,7 @@ export default function RigFlowPage() {
               modelFormat={modelFormat}
               skeleton={displaySkeleton}
               placementMode={step === "mark"}
+              animationMode={step === "animate"}
               showMarkers={step === "mark"}
               activeMarkerId={selectedMarkerId}
               markers={viewportMarkers}

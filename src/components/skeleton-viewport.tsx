@@ -25,6 +25,7 @@ interface ViewportProps {
   modelFormat: string | null;
   skeleton: Bone[];
   placementMode?: boolean;
+  animationMode?: boolean;
   showMarkers?: boolean;
   activeMarkerId?: string | null;
   markers?: PlacedMarker[];
@@ -195,15 +196,17 @@ function MarkerSpheres({ markers, activeMarkerId }: { markers: PlacedMarker[]; a
   );
 }
 
-const CAMERA_FRONT = [0, 1.0, 3.5] as const;
-const DEFAULT_TARGET = [0, 0.8, 0] as const;
+const CAMERA_FRONT = [0, 1.2087, 1.9026] as const;
+const DEFAULT_TARGET = [0, 1.1, 0] as const;
+const CAMERA_MARK_POSITION = [0, 1.2087, 1.9026] as const;
+const CAMERA_MARK_TARGET = [0, 1.1, 0] as const;
 
 function CameraController({
   controlsRef,
   cameraAction,
 }: {
   controlsRef: React.RefObject<any>;
-  cameraAction: "zoomIn" | "zoomOut" | "up" | "down" | null;
+  cameraAction: "zoomIn" | "zoomOut" | "up" | "down" | "reset" | null;
 }) {
   const { camera } = useThree();
 
@@ -214,6 +217,13 @@ function CameraController({
     const zoomSpeed = 0.8;
 
     switch (cameraAction) {
+      case "reset":
+        camera.position.set(...CAMERA_FRONT);
+        if (controlsRef.current) {
+          controlsRef.current.target.set(...DEFAULT_TARGET);
+          controlsRef.current.update();
+        }
+        break;
       case "zoomIn": {
         const dir = new THREE.Vector3();
         camera.getWorldDirection(dir);
@@ -241,7 +251,93 @@ function CameraController({
         }
         break;
     }
+
+    // Log camera values after each action
+    console.log('=== Camera Values ===');
+    console.log('Position:', {
+      x: camera.position.x.toFixed(4),
+      y: camera.position.y.toFixed(4),
+      z: camera.position.z.toFixed(4)
+    });
+    console.log('Target:', {
+      x: controlsRef.current?.target?.x?.toFixed(4),
+      y: controlsRef.current?.target?.y?.toFixed(4),
+      z: controlsRef.current?.target?.z?.toFixed(4)
+    });
+    console.log('=====================');
   }, [cameraAction]);
+
+  return null;
+}
+
+function AnimatedModel({
+  url,
+  skeleton,
+  visible,
+}: {
+  url: string;
+  skeleton: Bone[];
+  visible?: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  const gltf = useLoader(GLTFLoader, url);
+
+  useMemo(() => {
+    gltf.scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      }
+    });
+  }, [gltf]);
+
+  return (
+    <group ref={groupRef} visible={visible !== false}>
+      <primitive object={gltf.scene} />
+    </group>
+  );
+}
+
+function AutoFitCamera({
+  modelRef,
+  controlsRef,
+  placementMode,
+}: {
+  modelRef: React.RefObject<THREE.Group | null>;
+  controlsRef: React.RefObject<any>;
+  placementMode: boolean;
+}) {
+  const { camera } = useThree();
+  const fittedRef = useRef(false);
+
+  useEffect(() => {
+    if (!modelRef.current || fittedRef.current) return;
+
+    // Wait a frame for model to be fully loaded
+    const timer = setTimeout(() => {
+      if (!modelRef.current) return;
+
+      // Use fixed camera position for mark mode
+      camera.position.set(...CAMERA_MARK_POSITION);
+      camera.lookAt(...CAMERA_MARK_TARGET);
+
+      if (controlsRef.current) {
+        controlsRef.current.target.set(...CAMERA_MARK_TARGET);
+        controlsRef.current.update();
+      }
+
+      console.log('=== Camera Mark Mode ===');
+      console.log('Position:', CAMERA_MARK_POSITION);
+      console.log('Target:', CAMERA_MARK_TARGET);
+      console.log('========================');
+
+      fittedRef.current = true;
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [modelRef.current, camera, controlsRef]);
 
   return null;
 }
@@ -252,6 +348,7 @@ function Scene({
   skeleton,
   controlsRef,
   placementMode,
+  animationMode,
   showMarkers,
   markers,
   activeMarkerId,
@@ -264,14 +361,16 @@ function Scene({
   skeleton: Bone[];
   controlsRef: React.RefObject<any>;
   placementMode: boolean;
+  animationMode: boolean;
   showMarkers: boolean;
   markers: PlacedMarker[];
   activeMarkerId?: string | null;
   onPlace?: (pos: [number, number, number]) => void;
-  cameraAction: "zoomIn" | "zoomOut" | "up" | "down" | null;
+  cameraAction: "zoomIn" | "zoomOut" | "up" | "down" | "reset" | null;
   showMesh: boolean;
 }) {
   const { camera } = useThree();
+  const modelGroupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     camera.position.set(...CAMERA_FRONT);
@@ -316,11 +415,22 @@ function Scene({
       />
 
       <Suspense fallback={null}>
-        <Model url={modelUrl} format={modelFormat} onPlace={onPlace} visible={showMesh} />
+        <group ref={modelGroupRef}>
+          <Model url={modelUrl} format={modelFormat} onPlace={onPlace} visible={showMesh} />
+        </group>
       </Suspense>
-      <Suspense fallback={null}>
-        <SkeletonOverlay skeleton={skeleton} />
-      </Suspense>
+      
+      <AutoFitCamera 
+        modelRef={modelGroupRef} 
+        controlsRef={controlsRef} 
+        placementMode={placementMode} 
+      />
+      
+      {!animationMode && (
+        <Suspense fallback={null}>
+          <SkeletonOverlay skeleton={skeleton} />
+        </Suspense>
+      )}
 
       {showMarkers && markers.length > 0 && (
         <MarkerSpheres markers={markers} activeMarkerId={activeMarkerId} />
@@ -346,6 +456,7 @@ export default function SkeletonViewport({
   modelFormat,
   skeleton,
   placementMode = false,
+  animationMode = false,
   showMarkers = true,
   activeMarkerId = null,
   markers = [],
@@ -353,20 +464,17 @@ export default function SkeletonViewport({
   className = "",
 }: ViewportProps) {
   const controlsRef = useRef<any>(null);
-  const [cameraAction, setCameraAction] = useState<"zoomIn" | "zoomOut" | "up" | "down" | null>(null);
+  const [cameraAction, setCameraAction] = useState<"zoomIn" | "zoomOut" | "up" | "down" | "reset" | null>(null);
   const [showMesh, setShowMesh] = useState(true);
 
-  const triggerAction = useCallback((action: "zoomIn" | "zoomOut" | "up" | "down") => {
+  const triggerAction = useCallback((action: "zoomIn" | "zoomOut" | "up" | "down" | "reset") => {
     setCameraAction(action);
     requestAnimationFrame(() => setCameraAction(null));
   }, []);
 
   const handleReset = useCallback(() => {
-    if (controlsRef.current) {
-      controlsRef.current.target.set(...DEFAULT_TARGET);
-      controlsRef.current.update();
-    }
-  }, []);
+    triggerAction("reset");
+  }, [triggerAction]);
 
   const handlePlace = useCallback(
     (position: [number, number, number]) => {
@@ -377,11 +485,13 @@ export default function SkeletonViewport({
     [placementMode, onMarkerPlace]
   );
 
+  const showCameraControls = placementMode || animationMode;
+
   return (
     <div
       className={`relative bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 ${className} ${
         placementMode ? "ring-2 ring-amber-500/50" : ""
-      }`}
+      } ${animationMode ? "ring-2 ring-purple-500/50" : ""}`}
     >
       {!modelUrl && (
         <div className="absolute inset-0 flex items-center justify-center text-zinc-600 z-10">
@@ -400,8 +510,14 @@ export default function SkeletonViewport({
         </div>
       )}
 
+      {animationMode && (
+        <div className="absolute top-3 left-3 z-10 px-3 py-1.5 bg-purple-500/90 text-white text-xs font-medium rounded-lg">
+          Animation mode
+        </div>
+      )}
+
       {/* Mesh toggle - visible in rig/rename/export steps */}
-      {!placementMode && modelUrl && (
+      {!placementMode && !animationMode && modelUrl && (
         <button
           onClick={() => setShowMesh((v) => !v)}
           className="absolute top-3 left-3 z-10 p-2 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5"
@@ -412,8 +528,8 @@ export default function SkeletonViewport({
         </button>
       )}
 
-      {/* Camera controls for placement mode */}
-      {placementMode && (
+      {/* Camera controls for placement/animation mode */}
+      {showCameraControls && (
         <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-1">
           <button
             onClick={() => triggerAction("zoomIn")}
@@ -475,6 +591,7 @@ export default function SkeletonViewport({
               skeleton={skeleton}
               controlsRef={controlsRef}
               placementMode={placementMode}
+              animationMode={animationMode}
               showMarkers={showMarkers}
               markers={markers}
               activeMarkerId={activeMarkerId}
