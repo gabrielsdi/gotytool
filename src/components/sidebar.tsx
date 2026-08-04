@@ -17,6 +17,7 @@ import {
   LogOut,
   Settings,
   ChevronRight,
+  Bone,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -32,6 +33,13 @@ const TOOLS = [
     name: "Background Removal",
     icon: Scissors,
     description: "Remove image backgrounds",
+  },
+  {
+    id: "rigflow",
+    name: "RigFlow",
+    icon: Bone,
+    description: "Auto-rig & animate 3D models for UE",
+    href: "/rigflow",
   },
   {
     id: "coming-1",
@@ -78,14 +86,19 @@ export function Sidebar({ assetCount, activeTool, onToolChange, user, onLoginCli
   const pathname = usePathname();
 
   const isSettings = pathname === "/user/settings";
+  const isRigFlow = pathname === "/rigflow";
   const displayName = user?.user_metadata?.full_name || user?.email || "User";
 
-  const handleToolClick = (toolId: string) => {
-    if (isSettings) {
+  const handleToolClick = (tool: typeof TOOLS[number]) => {
+    if (tool.href) {
+      router.push(tool.href);
+      return;
+    }
+    if (isSettings || isRigFlow) {
       router.push("/");
       return;
     }
-    onToolChange(toolId);
+    onToolChange(tool.id);
   };
 
   return (
@@ -110,13 +123,17 @@ export function Sidebar({ assetCount, activeTool, onToolChange, user, onLoginCli
         </p>
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
+          const isActive = isRigFlow
+            ? tool.id === "rigflow"
+            : !isSettings && activeTool === tool.id;
+
           return (
             <button
               key={tool.id}
-              onClick={() => handleToolClick(tool.id)}
+              onClick={() => handleToolClick(tool)}
               disabled={tool.disabled && !isSettings}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                !isSettings && activeTool === tool.id
+                isActive
                   ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                   : tool.disabled
                     ? "text-zinc-600 cursor-not-allowed"
@@ -125,7 +142,7 @@ export function Sidebar({ assetCount, activeTool, onToolChange, user, onLoginCli
             >
               <Icon
                 className={`w-5 h-5 shrink-0 ${
-                  !isSettings && activeTool === tool.id
+                  isActive
                     ? "text-amber-400"
                     : tool.disabled
                       ? "text-zinc-600"
@@ -154,18 +171,16 @@ export function Sidebar({ assetCount, activeTool, onToolChange, user, onLoginCli
             Library
           </p>
           <button
-            onClick={() => handleToolClick("assets")}
+            onClick={() => { if (!isSettings && !isRigFlow) onToolChange("assets"); }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-              !isSettings && activeTool === "assets"
+              !isSettings && !isRigFlow && activeTool === "assets"
                 ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                : isSettings
-                  ? "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
-                  : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
+                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 border border-transparent"
             }`}
           >
             <FolderOpen
               className={`w-5 h-5 shrink-0 ${
-                !isSettings && activeTool === "assets" ? "text-amber-400" : "text-zinc-500"
+                !isSettings && !isRigFlow && activeTool === "assets" ? "text-amber-400" : "text-zinc-500"
               }`}
             />
             <div className="text-left font-medium">Assets</div>
