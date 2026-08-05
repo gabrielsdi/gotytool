@@ -201,6 +201,16 @@ export function RigTools() {
     [target]
   );
 
+  const handleDownloadAll = useCallback(() => {
+    const valid = results.filter((r) => !r.failed && r.url);
+    valid.forEach((r, i) => {
+      // Stagger so browsers that throttle consecutive downloads don't drop files.
+      setTimeout(() => {
+        handleDownload(r);
+      }, i * 250);
+    });
+  }, [results, handleDownload]);
+
   return (
     <div className="w-full max-w-4xl space-y-6">
       <div className="space-y-1">
@@ -341,6 +351,17 @@ export function RigTools() {
 
       {results.length > 0 && (
         <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              Results ({results.filter((r) => !r.failed).length} converted)
+            </p>
+            {results.some((r) => !r.failed && r.url) && (
+              <Button variant="secondary" size="sm" onClick={handleDownloadAll}>
+                <Download className="w-3.5 h-3.5" />
+                Download all
+              </Button>
+            )}
+          </div>
           {results.map((r) => (
             <div
               key={r.id}

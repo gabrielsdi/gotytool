@@ -95,8 +95,10 @@ function exportFbx(root: Object3D, fps = 30): Uint8Array {
     // Unreal's Z-up — so Unreal's FBX importer applies its own Y-up -> Z-up
     // conversion and the model stands upright, exactly like the original.
     // Declaring Z-up here would leave the Y-up data "rotated" on import.
+    // Front is declared -Z (Unreal's forward faces the camera) so the
+    // character imports facing forward instead of 180° backwards.
     axisUp: "Y",
-    axisForward: "Z",
+    axisForward: "-Z",
     unitScale: 1,
     fps,
   });
