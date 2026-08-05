@@ -35,17 +35,17 @@ const TOOLS = [
     description: "Remove image backgrounds",
   },
   {
+    id: "rig-tools",
+    name: "Rig Tools",
+    icon: Bone,
+    description: "Mixamo to Unreal retarget",
+  },
+  {
     id: "coming-1",
     name: "Sprite Sheet Cutter",
     icon: Grid3x3,
     description: "Coming soon",
     disabled: true,
-  },
-  {
-    id: "rig-tools",
-    name: "Rig Tools",
-    icon: Bone,
-    description: "Mixamo to Unreal retarget",
   },
   {
     id: "coming-2",
