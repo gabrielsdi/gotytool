@@ -13,6 +13,7 @@ import {
   Gamepad2,
   Hammer,
   Wrench,
+  Bone,
   FolderOpen,
   LogOut,
   Settings,
@@ -39,6 +40,12 @@ const TOOLS = [
     icon: Grid3x3,
     description: "Coming soon",
     disabled: true,
+  },
+  {
+    id: "rig-tools",
+    name: "Rig Tools",
+    icon: Bone,
+    description: "Mixamo to Unreal retarget",
   },
   {
     id: "coming-2",

@@ -2,6 +2,7 @@
 
 import { BackgroundRemoval } from "@/components/background-removal";
 import { AssetsGallery } from "@/components/assets-gallery";
+import { RigTools } from "@/components/rig-tools";
 import { useAssets } from "@/hooks/use-assets";
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -9,6 +10,7 @@ import {
   ImageIcon,
   ListCheck,
   HardDrive,
+  Bone,
 } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 import { AuthModalLogin, AuthModalRegister } from "@/components/auth-modal";
@@ -101,6 +103,22 @@ export default function Home() {
                 </p>
               </div>
               <BackgroundRemoval onAssetCreated={addAsset} isGuest={!user} />
+            </div>
+          )}
+
+          {activeTool === "rig-tools" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Bone className="w-6 h-6 text-amber-500" />
+                  Rig Tools
+                </h2>
+                <p className="text-zinc-400 mt-1">
+                  Retarget Mixamo rigs and animations to the Unreal Engine
+                  mannequin skeleton.
+                </p>
+              </div>
+              <RigTools />
             </div>
           )}
 
