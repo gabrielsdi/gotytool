@@ -10,7 +10,6 @@
 export type SkeletonTarget = "ue4" | "ue5";
 
 const MIXAMO_TO_UNREAL: Record<string, string> = {
-  root: "Root",
   Hips: "Pelvis",
   Spine: "spine_01",
   Spine1: "spine_02",
@@ -98,9 +97,17 @@ export function stripNamespace(name: string): string {
   return afterSep.replace(/^mixamorig/i, "");
 }
 
-/** Resolve a raw bone name to its target name (falls back to stripped name). */
+/**
+ * Resolve a raw bone name to its target name (falls back to stripped name).
+ * Some Mixamo files include the namespace token itself as the root bone
+ * (i.e. a bone literally named "mixamorig", parent of "mixamorig:Hips").
+ * Stripping it yields an empty name, which would export as "null" in Unreal;
+ * that bone is the skeleton root and should be kept as "root" (the Unreal
+ * mannequin's root bone name).
+ */
 export function resolveBoneName(name: string, map: Readonly<Record<string, string>>): string {
   const base = stripNamespace(name);
+  if (base === "") return "root";
   return map[base] ?? base;
 }
 

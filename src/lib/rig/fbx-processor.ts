@@ -88,6 +88,10 @@ function rewriteAnimationTracks(root: Object3D, oldToNew: Map<string, string>): 
 }
 
 function exportFbx(root: Object3D, fps = 30): Uint8Array {
+  // An unnamed top-level group would export a model node with an empty name,
+  // which Unreal shows as "null". Keep a sensible root name.
+  if (!root.name || !root.name.trim()) root.name = "root";
+
   const exporter = new FBXExporter();
   return exporter.parseSync(root, {
     // Mixamo source files are Y-up / Z-forward, and three.js keeps them in
