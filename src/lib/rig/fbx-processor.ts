@@ -89,7 +89,17 @@ function rewriteAnimationTracks(root: Object3D, oldToNew: Map<string, string>): 
 
 function exportFbx(root: Object3D, fps = 30): Uint8Array {
   const exporter = new FBXExporter();
-  return exporter.parseSync(root, { preset: "unreal", fps });
+  return exporter.parseSync(root, {
+    // Mixamo source files are Y-up / Z-forward, and three.js keeps them in
+    // that orientation. We must declare the TRUE axes of the data — not
+    // Unreal's Z-up — so Unreal's FBX importer applies its own Y-up -> Z-up
+    // conversion and the model stands upright, exactly like the original.
+    // Declaring Z-up here would leave the Y-up data "rotated" on import.
+    axisUp: "Y",
+    axisForward: "Z",
+    unitScale: 1,
+    fps,
+  });
 }
 
 export async function processFbx(
