@@ -9,6 +9,11 @@
 
 export type SkeletonTarget = "ue4" | "ue5";
 
+export interface BoneRenameEntry {
+  original: string;
+  converted: string;
+}
+
 const MIXAMO_TO_UNREAL: Record<string, string> = {
   Hips: "Pelvis",
   Spine: "spine_01",
