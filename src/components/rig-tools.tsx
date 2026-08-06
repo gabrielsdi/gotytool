@@ -2,8 +2,11 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { targetLabel, type SkeletonTarget } from "@/lib/rig/bone-map";
-import type { BoneRenameEntry } from "@/lib/rig/fbx-processor";
+import {
+  targetLabel,
+  type SkeletonTarget,
+  type BoneRenameEntry,
+} from "@/lib/rig/bone-map";
 import {
   FileBox,
   RefreshCw,
@@ -25,9 +28,14 @@ const MAX_TOTAL_MB = 200;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 const MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024;
 
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
+
 const ERROR_MESSAGES = {
   unsupported: "Please select a valid .fbx or .obj file.",
   pipeline_failed: "Something went wrong while processing the file. Please try again.",
+  backend_unreachable:
+    "Could not reach the conversion server. Make sure gotytool-backend (Blender) is running.",
   file_too_large: (name: string) =>
     `"${name}" exceeds the ${MAX_FILE_MB} MB per-file limit.`,
   batch_too_large: (name: string) =>
@@ -146,47 +154,74 @@ export function RigTools() {
     setError(null);
     setResults([]);
 
-    try {
-      const processor = await import("@/lib/rig/fbx-processor");
-      const output: Result[] = [];
+    const output: Result[] = [];
 
-      for (const item of files) {
+    for (const item of files) {
+      try {
+        const form = new FormData();
+        form.append("file", item.file);
+        form.append("target", target);
+
+        let res: Response;
         try {
-          const isObj = /\.obj$/i.test(item.file.name);
-          const res = isObj
-            ? await processor.processObj(await item.file.text(), item.file.name, target)
-            : await processor.processFbx(await item.file.arrayBuffer(), item.file.name, target);
-
-          const url = URL.createObjectURL(
-            new Blob([new Uint8Array(res.bytes)], { type: "application/octet-stream" })
-          );
-          output.push({
-            id: item.id,
-            sourceName: res.fileName,
-            url,
-            renames: res.renames,
-            boneCount: res.boneCount,
-            clipCount: res.animationClipCount,
-            failed: false,
+          res = await fetch(`${BACKEND_URL}/api/convert`, {
+            method: "POST",
+            body: form,
           });
-        } catch (err) {
-          output.push({
-            id: item.id,
-            sourceName: item.file.name,
-            url: null,
-            renames: [],
-            boneCount: 0,
-            clipCount: 0,
-            failed: true,
-            error: err instanceof Error ? err.message : ERROR_MESSAGES.pipeline_failed,
-          });
+        } catch {
+          throw new Error(ERROR_MESSAGES.backend_unreachable);
         }
-      }
 
-      setResults(output);
-    } finally {
-      setProcessing(false);
+        if (!res.ok) {
+          let message = ERROR_MESSAGES.pipeline_failed;
+          try {
+            const body = await res.json();
+            if (body?.error) message = String(body.error);
+          } catch {
+            /* keep default */
+          }
+          throw new Error(message);
+        }
+
+        const metaRaw = res.headers.get("X-Rig-Meta");
+        const meta = metaRaw
+          ? (JSON.parse(decodeURIComponent(metaRaw)) as {
+              renames?: BoneRenameEntry[];
+              boneCount?: number;
+              clipCount?: number;
+            })
+          : { renames: [], boneCount: 0, clipCount: 0 };
+
+        const bytes = await res.arrayBuffer();
+        const url = URL.createObjectURL(
+          new Blob([bytes], { type: "application/octet-stream" })
+        );
+
+        output.push({
+          id: item.id,
+          sourceName: item.file.name,
+          url,
+          renames: meta.renames ?? [],
+          boneCount: meta.boneCount ?? 0,
+          clipCount: meta.clipCount ?? 0,
+          failed: false,
+        });
+      } catch (err) {
+        output.push({
+          id: item.id,
+          sourceName: item.file.name,
+          url: null,
+          renames: [],
+          boneCount: 0,
+          clipCount: 0,
+          failed: true,
+          error: err instanceof Error ? err.message : ERROR_MESSAGES.pipeline_failed,
+        });
+      }
     }
+
+    setResults(output);
+    setProcessing(false);
   }, [files, processing, target]);
 
   const handleDownload = useCallback(
