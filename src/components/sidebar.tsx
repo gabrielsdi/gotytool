@@ -41,11 +41,10 @@ const TOOLS = [
     description: "Mixamo to Unreal retarget",
   },
   {
-    id: "coming-1",
+    id: "sprite-sheet",
     name: "Sprite Sheet Cutter",
     icon: Grid3x3,
-    description: "Coming soon",
-    disabled: true,
+    description: "Cut sprite sheets into individual sprites",
   },
   {
     id: "coming-2",
