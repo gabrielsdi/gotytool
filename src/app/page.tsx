@@ -3,6 +3,7 @@
 import { BackgroundRemoval } from "@/components/background-removal";
 import { AssetsGallery } from "@/components/assets-gallery";
 import { RigTools } from "@/components/rig-tools";
+import { SpriteSheetCutter } from "@/components/sprite-sheet-cutter";
 import { useAssets } from "@/hooks/use-assets";
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   ListCheck,
   HardDrive,
   Bone,
+  Grid3x3,
 } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 import { AuthModalLogin, AuthModalRegister } from "@/components/auth-modal";
@@ -119,6 +121,22 @@ export default function Home() {
                 </p>
               </div>
               <RigTools />
+            </div>
+          )}
+
+          {activeTool === "sprite-sheet" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Grid3x3 className="w-6 h-6 text-amber-500" />
+                  Sprite Sheet Cutter
+                </h2>
+                <p className="text-zinc-400 mt-1">
+                  Upload a sprite sheet and cut it into individual sprites.
+                  Specify tile size, offset, gap, and output format.
+                </p>
+              </div>
+              <SpriteSheetCutter />
             </div>
           )}
 
